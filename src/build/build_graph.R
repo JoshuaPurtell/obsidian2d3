@@ -34,7 +34,7 @@ simpleCap <- function(x) {
     x<-str_replace_all(x,"'","")
     s <- strsplit(x, " ")[[1]]
     output<-paste(toupper(substring(s, 1,1)), substring(s, 2),
-          sep="", collapse=" ")
+                  sep="", collapse=" ")
     return(output)
 }
 
@@ -42,25 +42,41 @@ simpleCapUnder <- function(x) {
     x<-str_replace_all(x,"'","")
     s <- strsplit(x, "_")[[1]]
     output<-paste(toupper(substring(s, 1,1)), substring(s, 2),
-          sep="", collapse="_")
+                  sep="", collapse="_")
     return(output)
 }
 
-simpleCapUnderLink <- function(x) { #this is a workaround and should be cleaned up
-    x<-substr(x,2,nchar(x)-1)
+simpleCapUnderLink <- function(x,website_path) { #this is a workaround and should be cleaned up
+    print("underlink x")
+    #print("fullx")
+    print(x)
+    #prefix<-sub('\\/[^\\/]*','',x)
+    x<-sub('.*port\\/', '',x)
+    #print(x)
+    #print(prefix)
+    x<-substr(x,1,nchar(x)-1)
     x<-str_replace_all(x,"'","")
     s <- strsplit(x, "_")[[1]]
     output<-paste(toupper(substring(s, 1,1)), substring(s, 2),
                   sep="", collapse="_")
-    output<-paste0("/",output,")")
-    return(output)
+    #output<-paste0(prefix,output,")")
+    print("output")
+    print(output)
+    print("concatted output")
+    print(paste0(website_path,substring(output,1,nchar(output)-3),")"))
+    return(paste0(website_path,substring(output,1,nchar(output)-3),"/)"))
 }
 refactor_links_obsidian2hugo<-function(raw_path_dir,name,dest_path_dir,dest_name,website_path){
     document<-read_file(paste0(raw_path_dir,name)) #"\\[\\[.+?\\]\\]"
     clean<-str_replace_all(document,"\\[\\[(.+?)\\]\\]",paste0("\\[\\1\\]","(",website_path,"\\1",".md)"))
     clean<-str_replace_all(clean, "\\([^()]+\\.md\\)", function(x) gsub(" ", "_", x, fixed=TRUE) ) #per stack overflow's Wiktor Stribizew https://stackoverflow.com/questions/64415118/passing-function-to-r-regex-based-tools#64415319
     clean<-str_replace_all(clean, "\\([^()]+\\.md\\)", function(x) gsub("'", "", x, fixed=TRUE) )
-    clean<-str_replace_all(clean, "\\/[^()]+\\.md\\)", function(x) simpleCapUnderLink(x) )
+    print("preclean")
+    print(clean)
+    #clean<-str_replace_all(clean, "\\/[^()]+\\.md\\)", function(x) simpleCapUnderLink(x,website_path) )
+    clean<-str_replace_all(clean, "https[^()]+\\.md\\)", function(x) simpleCapUnderLink(x,website_path) )
+    print("clean")
+    print(clean)
     write_file(clean,paste0(dest_path_dir,"/",dest_name))
     return(paste0(dest_path_dir,"/",dest_name))
 }
@@ -83,9 +99,6 @@ build_initial_links_nodes<-function(build_dir){
 }
 
 
-
-print(simpleCap("stochastic gradient descent"))
-
 update_links_nodes_clean<-function(document,document_title,links_df,nodes_df,group){
     size<-10
     links<-unique(find_links(document)[[1]])
@@ -96,6 +109,8 @@ update_links_nodes_clean<-function(document,document_title,links_df,nodes_df,gro
         for (i in 1:length(links)){
             links[[i]]<-simpleCap(links[[i]])
         }
+        print(document_title)
+        print(links)
         if ((nrow(links_df)==0)|(nrow(nodes_df)==0)){
             #first, assign nodes
             list_to_bind<-vector(mode="list", length=(length(links)+1))
@@ -196,6 +211,8 @@ concord_node_size<-function(links_df,nodes_df){
 
 #function to increase link girth based on importance of connectivity
 
+#function to automatically add atomic iframe to node page (and init any missing ones)
+
 ##wrapper
 
 #builds tree(s) based on recursive search. Files only need to be sent to /post/ once, so do so for
@@ -203,6 +220,8 @@ concord_node_size<-function(links_df,nodes_df){
 
 #build dir is where we put dataframes, so as not to clutter.
 #can be same as root but recommend against
+
+##TODO: automatically include graph in obsidian files
 process_vault<-function(root_dir,target_root_dir,build_dir){
     #first, build main
     files<-list.files(root_dir,recursive=TRUE) #these will have spaces, which we should strip
@@ -216,9 +235,10 @@ process_vault<-function(root_dir,target_root_dir,build_dir){
     target_files<-list(type="vector",length=length(files))
     for (f in 1:length(files)){
         file<-files[[f]]
-        target_files[[f]]<-refactor_links_obsidian2hugo(root_dir,paste0("/",file),target_root_dir,simpleCapUnder(sub('.*\\/', '', str_replace_all(file, "\\/[^()]+\\.md", function(x) gsub(" ", "_", x, fixed=TRUE)))),"obsidian_port/")#used to change to _
+        target_files[[f]]<-refactor_links_obsidian2hugo(root_dir,paste0("/",file),target_root_dir,simpleCapUnder(sub('.*\\/', '', str_replace_all(file, "\\/[^()]+\\.md", function(x) gsub(" ", "_", x, fixed=TRUE)))),"https://www.processingstochasticities.com/obsidian_port/")#used to change to _
     }
-    
+    print("target files")
+    print(target_files)
     #ok, this is the tricky part
     #let's start by just building the main graph
     #make sure to build csvs in build
@@ -327,7 +347,6 @@ process_vault<-function(root_dir,target_root_dir,build_dir){
     #      /topics/topicA.html
 }
 
-process_vault("~/desktop/blog_posts/example_directory","/Users/AnR/Documents/GitHub/casper3-hugo-starter/content/obsidian_port","~/desktop/blog_posts/example_build_directory")
 
 #find ways to add mini-graphs to md pages by default
 
@@ -343,40 +362,4 @@ library(stringi)
 library(plyr)
 library(readr)
 
-
-nodes_df<-as.data.frame.matrix(fread("author_nodes.csv"))
-links_df<-as.data.frame.matrix(fread("author_links.csv"))
-links_df<-links_df[links_df$source<0,]
-nodes_df<-nodes_df[nodes_df$source<0,]
-MyClickScript2<- 'var n = d.name; window.location.href = "https://www.processingstochasticities.com/hidden/" + n.replace(" ","_") + "/"
-'
-##ADD ZONE
-
-#wd has all files
-wd<-"~/desktop/blog_posts/"
-document<-read_file(paste0(wd,"mt.md"))
-#clean_up_obsidian_md(wd,"mt.md",wd,"mt_mutated.md")
-refactor_links_obsidian2hugo(wd,"mt.md",wd,"mt_mutated.md","obsidian_port")
-
-document_title<-"Measure Theory"
-records<-update_links_nodes_clean(document,document_title,links_df,nodes_df,0)
-links_df<-records[[1]]
-nodes_df<-records[[2]]#[4:11]
-
-document<-read_file(paste0(getwd(),"/definitions.md"))
-document_title<-"Definitions"
-records<-update_links_nodes_clean(document,document_title,links_df,nodes_df,1)
-links_df<-records[[1]]
-nodes_df<-records[[2]]#[4:11]
-fwrite(nodes_df,"author_nodes.csv")
-fwrite(links_df,"author_links.csv")
-
-##BUILD ZONE
-fp<-forceNetwork(Links = links_df, Nodes = nodes_df,
-                 Source = "source", Target = "target",
-                 Value = "value", NodeID = "name",
-                 Group = "group", opacity = 0.8, clickAction = MyClickScript2)
-
-
-saveWidget(fp, file="articles.html")
-
+process_vault("~/desktop/blog_posts/example_directory","/Users/AnR/Documents/GitHub/casper3-hugo-starter/content/obsidian_port","~/desktop/blog_posts/example_build_directory")
