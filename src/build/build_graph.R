@@ -26,12 +26,41 @@ clean_up_obsidian_md<-function(raw_path_dir,name,dest_path_dir,dest_name){
 
 ##this is a bit more intensive, and builds links for webpage
 convert_space_to_underscore<-function(string){
-    return(str_replace(string," ","_"))
+    return(str_replace_all(string," ","_"))
+}
+#helper, credit stack exchange
+#kill apostrophes 
+simpleCap <- function(x) {
+    x<-str_replace_all(x,"'","")
+    s <- strsplit(x, " ")[[1]]
+    output<-paste(toupper(substring(s, 1,1)), substring(s, 2),
+          sep="", collapse=" ")
+    return(output)
+}
+
+simpleCapUnder <- function(x) {
+    x<-str_replace_all(x,"'","")
+    s <- strsplit(x, "_")[[1]]
+    output<-paste(toupper(substring(s, 1,1)), substring(s, 2),
+          sep="", collapse="_")
+    return(output)
+}
+
+simpleCapUnderLink <- function(x) { #this is a workaround and should be cleaned up
+    x<-substr(x,2,nchar(x)-1)
+    x<-str_replace_all(x,"'","")
+    s <- strsplit(x, "_")[[1]]
+    output<-paste(toupper(substring(s, 1,1)), substring(s, 2),
+                  sep="", collapse="_")
+    output<-paste0("/",output,")")
+    return(output)
 }
 refactor_links_obsidian2hugo<-function(raw_path_dir,name,dest_path_dir,dest_name,website_path){
     document<-read_file(paste0(raw_path_dir,name)) #"\\[\\[.+?\\]\\]"
     clean<-str_replace_all(document,"\\[\\[(.+?)\\]\\]",paste0("\\[\\1\\]","(",website_path,"\\1",".md)"))
     clean<-str_replace_all(clean, "\\([^()]+\\.md\\)", function(x) gsub(" ", "_", x, fixed=TRUE) ) #per stack overflow's Wiktor Stribizew https://stackoverflow.com/questions/64415118/passing-function-to-r-regex-based-tools#64415319
+    clean<-str_replace_all(clean, "\\([^()]+\\.md\\)", function(x) gsub("'", "", x, fixed=TRUE) )
+    clean<-str_replace_all(clean, "\\/[^()]+\\.md\\)", function(x) simpleCapUnderLink(x) )
     write_file(clean,paste0(dest_path_dir,"/",dest_name))
     return(paste0(dest_path_dir,"/",dest_name))
 }
@@ -53,12 +82,9 @@ build_initial_links_nodes<-function(build_dir){
     fwrite(nodes_df,paste0(build_dir,"/","main_nodes.csv"))
 }
 
-#helper, credit stack exchange
-simpleCap <- function(x) {
-    s <- strsplit(x, " ")[[1]]
-    paste(toupper(substring(s, 1,1)), substring(s, 2),
-          sep="", collapse=" ")
-}
+
+
+print(simpleCap("stochastic gradient descent"))
 
 update_links_nodes_clean<-function(document,document_title,links_df,nodes_df,group){
     size<-10
@@ -190,7 +216,7 @@ process_vault<-function(root_dir,target_root_dir,build_dir){
     target_files<-list(type="vector",length=length(files))
     for (f in 1:length(files)){
         file<-files[[f]]
-        target_files[[f]]<-refactor_links_obsidian2hugo(root_dir,paste0("/",file),target_root_dir,sub('.*\\/', '', str_replace_all(file, "\\/[^()]+\\.md", function(x) gsub(" ", "_", x, fixed=TRUE))),"post/")
+        target_files[[f]]<-refactor_links_obsidian2hugo(root_dir,paste0("/",file),target_root_dir,simpleCapUnder(sub('.*\\/', '', str_replace_all(file, "\\/[^()]+\\.md", function(x) gsub(" ", "_", x, fixed=TRUE)))),"obsidian_port/")#used to change to _
     }
     
     #ok, this is the tricky part
@@ -208,7 +234,7 @@ process_vault<-function(root_dir,target_root_dir,build_dir){
     for (f in 1:length(target_files)){
         #for now, default group is 1
         document_title_md<-sub('.*\\/', '',files[[f]]) #use raw files not target files
-        document_title<-sub('\\..*', '',document_title_md) #sub('\\..*', '', x)
+        document_title<-simpleCap(sub('\\..*', '',document_title_md)) #sub('\\..*', '', x)
         outputs<-update_links_nodes_clean(read_file(paste0(root_dir,"/",files[[f]])),document_title,links_df,nodes_df,group)
         links_df<-outputs[[1]]
         nodes_df<-outputs[[2]]
@@ -224,14 +250,34 @@ process_vault<-function(root_dir,target_root_dir,build_dir){
     
     
     #now, build the html
-    MyClickScript2<- 'window.location.href = "https://www.processingstochasticities.com/hidden/" + d.name + "/"'
+    #MyClickScript2<- 'window.location.href = "https://www.processingstochasticities.com/static/obsidian_port/" + d.name + "/"'
+    #debug
+    #
+    #var n = d.name; 
+    #var node = n.split(" ").join("_");
+    #MyClickScript2<- '
+    #var n = d.name; 
+    #var node = n.split(" ").join("_");
+    #window.location.href = "https://www.processingstochasticities.com/obsidian_port/" + node + "/"'
+    MyClickScript2<- '
+    var n = d.name; 
+    var node = n.split(" ").join("_");
+    top.location = "https://www.processingstochasticities.com/obsidian_port/" + node + "/"
+    '
+    #
+    #MyClickScript2<- '
+    #var n = d.name; 
+    #var node = n.replace(" ","_");
+    #var dest = "https://www.processingstochasticities.com/static/obsidian_port/ + node + "/";
+    #window.location.href = dest
+    #'
     fp<-forceNetwork(Links = links_df, Nodes = nodes_df,
                      Source = "source", Target = "target",
                      Value = "value", NodeID = "name", Nodesize = "size",
                      Group = "group", opacity = 0.8, clickAction = MyClickScript2)
     
     
-    saveWidget(fp, file=paste0(target_root_dir,"/","main.html"))
+    saveWidget(fp, file=paste0(target_root_dir,"/","main_graph.html"))
     
     #TODO: build all the subset graphs
     
@@ -271,8 +317,8 @@ process_vault<-function(root_dir,target_root_dir,build_dir){
                          Value = "value", NodeID = "name", Nodesize = "size",
                          Group = "group", opacity = 0.8, clickAction = MyClickScript2)
         
-        
-        saveWidget(fp, file=paste0(node_dir,"/","node",n,".html"))
+        #print(paste0(node_dir,"/",convert_space_to_underscore(simpleCap(unique(nodes_df$name)[[n]])),".html"))
+        saveWidget(fp, file=paste0(node_dir,"/",convert_space_to_underscore(simpleCap(unique(nodes_df$name)[[n]])),".html"))
     }
     #post/files
     #graphs/main.html done
@@ -281,7 +327,10 @@ process_vault<-function(root_dir,target_root_dir,build_dir){
     #      /topics/topicA.html
 }
 
-process_vault("~/desktop/blog_posts/example_directory","~/desktop/blog_posts/example_target_directory","~/desktop/blog_posts/example_build_directory")
+process_vault("~/desktop/blog_posts/example_directory","/Users/AnR/Documents/GitHub/casper3-hugo-starter/content/obsidian_port","~/desktop/blog_posts/example_build_directory")
+
+#find ways to add mini-graphs to md pages by default
+
 
 ##PREP ZONE
 library(data.table)
@@ -299,15 +348,15 @@ nodes_df<-as.data.frame.matrix(fread("author_nodes.csv"))
 links_df<-as.data.frame.matrix(fread("author_links.csv"))
 links_df<-links_df[links_df$source<0,]
 nodes_df<-nodes_df[nodes_df$source<0,]
-MyClickScript2<- 'window.location.href = "https://www.processingstochasticities.com/hidden/" + d.name + "/"
+MyClickScript2<- 'var n = d.name; window.location.href = "https://www.processingstochasticities.com/hidden/" + n.replace(" ","_") + "/"
 '
 ##ADD ZONE
 
 #wd has all files
 wd<-"~/desktop/blog_posts/"
 document<-read_file(paste0(wd,"mt.md"))
-clean_up_obsidian_md(wd,"mt.md",wd,"mt_mutated.md")
-refactor_links_obsidian2hugo(wd,"mt.md",wd,"mt_mutated.md","posts/")
+#clean_up_obsidian_md(wd,"mt.md",wd,"mt_mutated.md")
+refactor_links_obsidian2hugo(wd,"mt.md",wd,"mt_mutated.md","obsidian_port")
 
 document_title<-"Measure Theory"
 records<-update_links_nodes_clean(document,document_title,links_df,nodes_df,0)
