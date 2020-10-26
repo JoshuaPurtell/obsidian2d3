@@ -1,10 +1,17 @@
+## ==================== ##
+## PROCESS_MD.R         ##
+## ==================== ##
+
+## ==================== ##
+## These functions are  ##
+## designed to prepare  ##
+## 
+## ==================== ##
+
 ###Build Graph for articles webpage
 
-##FUNCTIONS ZONE
 
-#helpers
-
-##find links
+## Identify links in obsidian doc
 find_links<-function(document){
     links<-str_extract_all(document,"\\[\\[.+?\\]\\]")
     for (link in 1:length(links)){
@@ -13,23 +20,14 @@ find_links<-function(document){
     return(links)
 }
 
-#function to render obsidian md files for website
 
-##this simply strips out the [[]], which is fine for basic usage
-clean_up_obsidian_md<-function(raw_path_dir,name,dest_path_dir,dest_name){
-    document<-read_file(paste0(raw_path_dir,name)) #"\\[\\[.+?\\]\\]"
-    clean_l<-str_replace_all(document,"\\[\\[","")
-    clean_lr<-str_replace_all(clean_l,"\\]\\]","")
-    write_file(clean_lr,paste0(dest_path_dir,dest_name))
-    return(clean_lr)
-}
-
-##this is a bit more intensive, and builds links for webpage
+##TODO: CLEAN THE "SIMPLE" FXNS AND HELPERS
 convert_space_to_underscore<-function(string){
     return(str_replace_all(string," ","_"))
 }
-#helper, credit stack exchange
-#kill apostrophes 
+convert_underscore_to_space<-function(string){
+    return(str_replace_all(string,"_"," ")) 
+}
 simpleCap <- function(x) {
     x<-str_replace_all(x,"'","")
     s <- strsplit(x, " ")[[1]]
@@ -37,7 +35,6 @@ simpleCap <- function(x) {
                   sep="", collapse=" ")
     return(output)
 }
-
 simpleCapUnder <- function(x) {
     x<-str_replace_all(x,"'","")
     s <- strsplit(x, "_")[[1]]
@@ -45,44 +42,31 @@ simpleCapUnder <- function(x) {
                   sep="", collapse="_")
     return(output)
 }
-
-simpleCapUnderLink <- function(x,website_path) { #this is a workaround and should be cleaned up
-    print("underlink x")
-    #print("fullx")
-    print(x)
-    #prefix<-sub('\\/[^\\/]*','',x)
+simpleCapUnderLink <- function(x,website_path) {
     x<-sub('.*port\\/', '',x)
-    #print(x)
-    #print(prefix)
     x<-substr(x,1,nchar(x)-1)
     x<-str_replace_all(x,"'","")
     s <- strsplit(x, "_")[[1]]
     output<-paste(toupper(substring(s, 1,1)), substring(s, 2),
                   sep="", collapse="_")
-    #output<-paste0(prefix,output,")")
-    print("output")
-    print(output)
-    print("concatted output")
-    print(paste0(website_path,substring(output,1,nchar(output)-3),")"))
     return(paste0(website_path,substring(output,1,nchar(output)-3),"/)"))
 }
+
+## WRITE VERSION OF OBSIDIAN MD WITH LINKS BUILT FOR WEBSITE
 refactor_links_obsidian2hugo<-function(raw_path_dir,name,dest_path_dir,dest_name,website_path){
     document<-read_file(paste0(raw_path_dir,name)) #"\\[\\[.+?\\]\\]"
     clean<-str_replace_all(document,"\\[\\[(.+?)\\]\\]",paste0("\\[\\1\\]","(",website_path,"\\1",".md)"))
     clean<-str_replace_all(clean, "\\([^()]+\\.md\\)", function(x) gsub(" ", "_", x, fixed=TRUE) ) #per stack overflow's Wiktor Stribizew https://stackoverflow.com/questions/64415118/passing-function-to-r-regex-based-tools#64415319
     clean<-str_replace_all(clean, "\\([^()]+\\.md\\)", function(x) gsub("'", "", x, fixed=TRUE) )
-    print("preclean")
-    print(clean)
-    #clean<-str_replace_all(clean, "\\/[^()]+\\.md\\)", function(x) simpleCapUnderLink(x,website_path) )
     clean<-str_replace_all(clean, "https[^()]+\\.md\\)", function(x) simpleCapUnderLink(x,website_path) )
-    print("clean")
-    print(clean)
+    #add frontmatter and graph
+    clean<-stylize_document(clean,convert_underscore_to_space(str_sub(dest_name,1,nchar(dest_name)-3)))
     write_file(clean,paste0(dest_path_dir,"/",dest_name))
     return(paste0(dest_path_dir,"/",dest_name))
 }
 
 
-#function to maintain_dfs
+## INITIALIZE DFS IF NONE EXIST (FIRST BUILD)
 build_initial_links_nodes<-function(build_dir){
     links_df <- data.frame(
         source=c(),
@@ -102,17 +86,18 @@ build_initial_links_nodes<-function(build_dir){
 update_links_nodes_clean<-function(document,document_title,links_df,nodes_df,group){
     size<-10
     links<-unique(find_links(document)[[1]])
-    #if no links, it should be ok to just skip
+    #if no links, right now it just skips the document.
+    #TODO: allow for sensible graph builds for vaults with "singleton" nodes
+    
     if (length(links)>0){
         #regularize both links and document_title
         document_title<-simpleCap(document_title)
         for (i in 1:length(links)){
             links[[i]]<-simpleCap(links[[i]])
         }
-        print(document_title)
-        print(links)
         if ((nrow(links_df)==0)|(nrow(nodes_df)==0)){
-            #first, assign nodes
+            
+            #first, push nodes to df
             list_to_bind<-vector(mode="list", length=(length(links)+1))
             list_to_bind[[1]]<-data.frame("name"=document_title,"group"=group,"size"=size)
             for (l in 1:length(links)){
@@ -120,25 +105,20 @@ update_links_nodes_clean<-function(document,document_title,links_df,nodes_df,gro
             }
             nodes_df<-rbindlist(list_to_bind)
             colnames(nodes_df)<-c("name","group","size")
-            #now, do links
             
+            #now, do links
             list_to_bind<-vector(mode="list", length=(length(links)+1))
             source<-match(document_title,nodes_df$name)-1
             value<-10#standard
             for (l in 1:length(links)){
-                #testdf<-data.frame("source"=source,"target"=l,"value"=value)#setDT()
-                #if (nrow(match_df(links_df,testdf))==0){
-                #links_df<-rbind(links_df,list(source,target,value))
                 list_to_bind[[l]]<-data.frame("source"=source,"target"=match(links[[l]],nodes_df$name)-1,"value"=value)
-                #print("nrow linksdf")
-                #print(nrow(links_df))
-                #}
             }
             links_df<-rbindlist(list_to_bind)
             colnames(links_df)<-c("source","target","value")
         }else{
-            #first, add nodes if necessary
+            #first, push new nodes
             #group<-0#default
+            
             size<-10#default
             list_to_bind<-list()
             list_to_bind[[1]]<-nodes_df
@@ -153,7 +133,7 @@ update_links_nodes_clean<-function(document,document_title,links_df,nodes_df,gro
             nodes_df<-rbindlist(list_to_bind)
             
             
-            #then, build links
+            #then, push links
             list_to_bind<-list()
             list_to_bind[[1]]<-links_df
             value<-10#default
@@ -174,14 +154,14 @@ update_links_nodes_clean<-function(document,document_title,links_df,nodes_df,gro
 
 #function to increase node size based on number of connections, maybe have very connected nodes show their names by default?
 concord_node_size<-function(links_df,nodes_df){
-    ##need to adjust for perfect parity
     
+    #right now makes highly connected nodes larger, but only slightly so
     size_params<-rep(0,length(unique(nodes_df$name)))
     for (u in 1:length(unique(nodes_df$name))){
         matches<-links_df$target==(u-1)
         size_params[[u]]<-length(matches[matches==TRUE])
     }
-    #want smallest to have size 10, largest 30, make all others linear transform
+    #want smallest to have size 7.5, largest 15, make all others linear transform
     normalized_size_params<-rep(0,length(unique(nodes_df$name)))
     minp<-min(size_params)
     maxp<-max(size_params)
@@ -196,33 +176,45 @@ concord_node_size<-function(links_df,nodes_df){
             idx<-match(nodes_df[["name"]][[u]],unique(nodes_df$name))
             adjusted_node_size[[u]]<-normalized_size_params[[idx]]
         }
-        #nodes_df[,"name":=adjusted_node_size]
     }
     
     nodes_df$size<-adjusted_node_size
     return(nodes_df)
 }
 
-##TEST
-#build_dir<-"~/desktop/blog_posts/example_build_directory"
-#links_df<-as.data.frame.matrix(fread(paste0(build_dir,"/","main_links.csv")))
-#nodes_df<-as.data.frame.matrix(fread(paste0(build_dir,"/","main_nodes.csv")))
-#concord_node_size(links_df,nodes_df)
+#function to build frontmatter and add graph at the end
+add_frontmatter<-function(document,document_title){
+    update_document<-paste0('+++\n author = \"Anonymous\"\n title = \"',document_title,'\"\n date = ',Sys.Date(),'\n+++\n\n',document)
+    return(update_document)
+}
+#date = "2020-08-01"
+add_graph<-function(document,document_title){
+    #print(convert_space_to_underscore(document_title))
+    update_document<-paste0(document,'\n \n <iframe seamless src="/obsidian_port/nodes/',convert_space_to_underscore(document_title),'.html" style="width:700px; height:400px; border: 2px solid black"></iframe>')
+}
 
-#function to increase link girth based on importance of connectivity
+stylize_document<-function(document,document_title){
+    fm_added<-add_frontmatter(document,document_title)
+    graph_added<-add_graph(fm_added,document_title)
+    return(graph_added)
+}
 
-#function to automatically add atomic iframe to node page (and init any missing ones)
+#TODO: add function to increase link girth based on importance of connectivity
 
-##wrapper
+#TODO: allow for more levels of construction. Right now, the code supports just a top-level build and atomic page
+#builds. The obvious next step is to allow for intermediate folder builds. For example, if I have one folder in my
+#graph for an abstract algebra textbook, and another for an algebraic topology textbook, it would be good to have a top-level
+#graph that includes all nodes, then two smaller subject graphs (one for each textbook), and then atomic graphs.
+#the natural question is, how would one handle these intermediate graphs? Perhaps they'd be build sort of like top-level
+#and just be hosted on their own pages? I think an interesting approach to explore would be to look at 
+#having a "level jump" capability, where in a given graph one would be able to click on a node and select the level
+#of context they'd like to see it in. I'm not sure how to implement this in the static context, however.
 
-#builds tree(s) based on recursive search. Files only need to be sent to /post/ once, so do so for
-#the large build but then for folder-based, topic-based, and post-based, just build the dataframes
 
 #build dir is where we put dataframes, so as not to clutter.
-#can be same as root but recommend against
+#can be same as root but recommend against. Should not be in hugo build directory for security reasons
 
-##TODO: automatically include graph in obsidian files
-process_vault<-function(root_dir,target_root_dir,build_dir){
+process_vault<-function(root_dir,target_root_dir,build_dir,click_action_script){
     #first, build main
     files<-list.files(root_dir,recursive=TRUE) #these will have spaces, which we should strip
     if (!dir.exists(target_root_dir)){
@@ -237,15 +229,11 @@ process_vault<-function(root_dir,target_root_dir,build_dir){
         file<-files[[f]]
         target_files[[f]]<-refactor_links_obsidian2hugo(root_dir,paste0("/",file),target_root_dir,simpleCapUnder(sub('.*\\/', '', str_replace_all(file, "\\/[^()]+\\.md", function(x) gsub(" ", "_", x, fixed=TRUE)))),"https://www.processingstochasticities.com/obsidian_port/")#used to change to _
     }
-    print("target files")
-    print(target_files)
-    #ok, this is the tricky part
-    #let's start by just building the main graph
+    
     #make sure to build csvs in build
     if (!file.exists(paste0(build_dir,"/","main_links.csv"))){
         build_initial_links_nodes(build_dir) 
     }
-    
     
     #ok, now cycle through docs
     links_df<-as.data.frame.matrix(fread(paste0(build_dir,"/","main_links.csv")))
@@ -258,9 +246,6 @@ process_vault<-function(root_dir,target_root_dir,build_dir){
         outputs<-update_links_nodes_clean(read_file(paste0(root_dir,"/",files[[f]])),document_title,links_df,nodes_df,group)
         links_df<-outputs[[1]]
         nodes_df<-outputs[[2]]
-        
-        #print(as.data.frame.matrix(fread(paste0(build_dir,"/","main_links.csv"))))
-        #print(as.data.frame.matrix(fread(paste0(build_dir,"/","main_nodes.csv"))))
     }
     
     #normalize node size
@@ -270,38 +255,15 @@ process_vault<-function(root_dir,target_root_dir,build_dir){
     
     
     #now, build the html
-    #MyClickScript2<- 'window.location.href = "https://www.processingstochasticities.com/static/obsidian_port/" + d.name + "/"'
-    #debug
-    #
-    #var n = d.name; 
-    #var node = n.split(" ").join("_");
-    #MyClickScript2<- '
-    #var n = d.name; 
-    #var node = n.split(" ").join("_");
-    #window.location.href = "https://www.processingstochasticities.com/obsidian_port/" + node + "/"'
-    MyClickScript2<- '
-    var n = d.name; 
-    var node = n.split(" ").join("_");
-    top.location = "https://www.processingstochasticities.com/obsidian_port/" + node + "/"
-    '
-    #
-    #MyClickScript2<- '
-    #var n = d.name; 
-    #var node = n.replace(" ","_");
-    #var dest = "https://www.processingstochasticities.com/static/obsidian_port/ + node + "/";
-    #window.location.href = dest
-    #'
     fp<-forceNetwork(Links = links_df, Nodes = nodes_df,
                      Source = "source", Target = "target",
                      Value = "value", NodeID = "name", Nodesize = "size",
-                     Group = "group", opacity = 0.8, clickAction = MyClickScript2)
+                     Group = "group", opacity = 0.8, clickAction = click_action_script)
     
     
     saveWidget(fp, file=paste0(target_root_dir,"/","main_graph.html"))
     
-    #TODO: build all the subset graphs
-    
-    #first, this is probably easier (and more important). Build node graphs
+    #Build node graphs
     node_dir<-paste0(target_root_dir,"/nodes")
     if (!dir.exists(node_dir)){
         dir.create(node_dir)
@@ -312,8 +274,6 @@ process_vault<-function(root_dir,target_root_dir,build_dir){
         #now, go through and find connected
         all_neighbors<-c(sub_links_df$source,sub_links_df$target)
         unique_node_names<-unique(nodes_df$name)
-        #print("subset")
-        #print((match(nodes_df$name,unique_node_names)-1) %in% all_neighbors)
         sub_nodes_df<-nodes_df[(match(nodes_df$name,unique_node_names)-1) %in% all_neighbors,]
         
         ##normalize links source and target
@@ -335,9 +295,8 @@ process_vault<-function(root_dir,target_root_dir,build_dir){
         fp<-forceNetwork(Links = sub_links_df, Nodes = sub_nodes_df,
                          Source = "source", Target = "target",
                          Value = "value", NodeID = "name", Nodesize = "size",
-                         Group = "group", opacity = 0.8, clickAction = MyClickScript2)
+                         Group = "group", opacity = 0.8, clickAction = click_action_script)
         
-        #print(paste0(node_dir,"/",convert_space_to_underscore(simpleCap(unique(nodes_df$name)[[n]])),".html"))
         saveWidget(fp, file=paste0(node_dir,"/",convert_space_to_underscore(simpleCap(unique(nodes_df$name)[[n]])),".html"))
     }
     #post/files
@@ -348,18 +307,4 @@ process_vault<-function(root_dir,target_root_dir,build_dir){
 }
 
 
-#find ways to add mini-graphs to md pages by default
 
-
-##PREP ZONE
-library(data.table)
-library(htmlwidgets)
-library(igraph)
-library(networkD3)
-library(readr)
-library(stringr)
-library(stringi)
-library(plyr)
-library(readr)
-
-process_vault("~/desktop/blog_posts/example_directory","/Users/AnR/Documents/GitHub/casper3-hugo-starter/content/obsidian_port","~/desktop/blog_posts/example_build_directory")
