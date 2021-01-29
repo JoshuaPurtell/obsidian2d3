@@ -43,24 +43,35 @@ simpleCapUnder <- function(x) {
     return(output)
 }
 simpleCapUnderLink <- function(x,website_path) {
-    x<-sub('.*port\\/', '',x)
+    x<-sub('.*\\/', '',x)#x<-sub('.*port\\/', '',x)
     x<-substr(x,1,nchar(x)-1)
     x<-str_replace_all(x,"'","")
     s <- strsplit(x, "_")[[1]]
     output<-paste(toupper(substring(s, 1,1)), substring(s, 2),
                   sep="", collapse="_")
-    return(paste0(website_path,substring(output,1,nchar(output)-3),"/)"))
+    return(paste0(website_path,"/",substring(output,1,nchar(output)-3),"/)"))
 }
 
 ## WRITE VERSION OF OBSIDIAN MD WITH LINKS BUILT FOR WEBSITE
 refactor_links_obsidian2hugo<-function(raw_path_dir,name,dest_path_dir,dest_name,website_path){
     document<-read_file(paste0(raw_path_dir,name)) #"\\[\\[.+?\\]\\]"
-    clean<-str_replace_all(document,"\\[\\[(.+?)\\]\\]",paste0("\\[\\1\\]","(",website_path,"\\1",".md)"))
+    #print("document")
+    #print(document)
+    clean<-str_replace_all(document,"\\[\\[(.+?)\\]\\]",paste0("\\[\\1\\]","(",website_path,"/","\\1",".md)"))
+    #print("link")
+    #print(clean)
     clean<-str_replace_all(clean, "\\([^()]+\\.md\\)", function(x) gsub(" ", "_", x, fixed=TRUE) ) #per stack overflow's Wiktor Stribizew https://stackoverflow.com/questions/64415118/passing-function-to-r-regex-based-tools#64415319
+    #print("link1")
+    #print(clean)
     clean<-str_replace_all(clean, "\\([^()]+\\.md\\)", function(x) gsub("'", "", x, fixed=TRUE) )
+    #print("link1.5")
+    #print(clean)
     clean<-str_replace_all(clean, "https[^()]+\\.md\\)", function(x) simpleCapUnderLink(x,website_path) )
     #add frontmatter and graph
     clean<-stylize_document(clean,convert_underscore_to_space(str_sub(dest_name,1,nchar(dest_name)-3)))
+    #print("link2")
+    #print(clean)
+    #print(paste0(dest_path_dir,"/",dest_name))
     write_file(clean,paste0(dest_path_dir,"/",dest_name))
     return(paste0(dest_path_dir,"/",dest_name))
 }
@@ -82,7 +93,7 @@ build_initial_links_nodes<-function(build_dir){
     fwrite(nodes_df,paste0(build_dir,"/","main_nodes.csv"))
 }
 
-
+##TODO: Clean Up so that re-running does not add duplicate link rows
 update_links_nodes_clean<-function(document,document_title,links_df,nodes_df,group){
     size<-10
     links<-unique(find_links(document)[[1]])
@@ -158,7 +169,7 @@ concord_node_size<-function(links_df,nodes_df){
     #right now makes highly connected nodes larger, but only slightly so
     size_params<-rep(0,length(unique(nodes_df$name)))
     for (u in 1:length(unique(nodes_df$name))){
-        matches<-links_df$target==(u-1)
+        matches<-links_df$source==(u-1) #used to use target, which makes less sense
         size_params[[u]]<-length(matches[matches==TRUE])
     }
     #want smallest to have size 7.5, largest 15, make all others linear transform
